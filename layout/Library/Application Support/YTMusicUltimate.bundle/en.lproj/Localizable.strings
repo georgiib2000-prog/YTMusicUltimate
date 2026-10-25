@@ -65,7 +65,7 @@
 "SAMPLES" = "Samples";
 "EXPLORE" = "Explore";
 "LIBRARY" = "Library";
-"DOWNLOADS" = "Downloads";
+"DOWNLOADS" = "My Music";
 
 "TAB_SETTINGS" = "Tab settings";
 "REMOVE_TABBAR_LABELS" = "Hide labels";
@@ -73,7 +73,7 @@
 "HIDE_SAMPLES" = "Hide Samples tab";
 "HIDE_EXPLORE" = "Hide Explore tab";
 "HIDE_LIBRARY" = "Hide Library tab";
-"HIDE_DOWNLOADS" = "Hide Downloads tab";
+"HIDE_DOWNLOADS" = "Hide My Music tab";
 
 "CLEAR_CACHE" = "Clear cache";
 
@@ -111,7 +111,7 @@
 "SKIP" = "Skip";
 "UNSKIP" = "Unskip";
 
-"EMPTY" = "Content you download will show here";
+"EMPTY" = "Songs and videos you download will show here.\n\nPlay anything, tap the download button in the player and choose Download audio.";
 "REMOVE_ALL" = "Remove all audios";
 "SHARE_ALL" = "Share all audios";
 "PREPARING" = "Preparing...";
@@ -119,3 +119,21 @@
 "ALL_DOWNLOADS" = "all download audios"; //keep it lowercase
 "DELETE" = "Delete";
 "RENAME" = "Rename";
+
+"SEARCH_MY_MUSIC" = "Search your music";
+"PLAY" = "Play";
+"SHUFFLE" = "Shuffle";
+"ONE_SONG" = "1 song";
+"SONGS_COUNT" = "%lu songs";
+"SONGS_FILTERED_COUNT" = "%lu of %lu songs";
+"NO_RESULTS" = "No results";
+"SORT_BY" = "Sort by";
+"SORT_RECENT" = "Recently added";
+"SORT_TITLE" = "Title";
+"SORT_ARTIST" = "Artist";
+"PLAY_NEXT" = "Play next";
+"ADD_TO_QUEUE" = "Add to queue";
+"WILL_PLAY_NEXT" = "Will play next";
+"ADDED_TO_QUEUE" = "Added to queue";
+"SHARE" = "Share";
+"UP_NEXT" = "Up next";
