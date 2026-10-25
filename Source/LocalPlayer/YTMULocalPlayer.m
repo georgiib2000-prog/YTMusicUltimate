@@ -8,6 +8,14 @@ static void *YTMUPlayerKVOContext = &YTMUPlayerKVOContext;
 // Ignore YouTube Music's "I'm playing" reports this long after we take over, while its pause is still landing
 static const NSTimeInterval YTMUHostGracePeriod = 2.0;
 
+// MediaRemote command numbers (MRMediaRemoteCommand)
+static const unsigned int YTMUMediaRemoteCommandPause = 1;
+static const unsigned int YTMUMediaRemoteCommandTogglePlayPause = 2;
+
+@interface MPRemoteCommandEvent (YTMUPrivate)
+- (instancetype)initWithCommand:(MPRemoteCommand *)command mediaRemoteType:(unsigned int)mediaRemoteType options:(NSDictionary *)options;
+@end
+
 @interface YTMULocalPlayer ()
 @property (nonatomic, strong) AVPlayer *player;
 @property (nonatomic, strong) NSMutableArray<YTMULocalTrack *> *mutableQueue;
@@ -585,18 +593,41 @@ static const NSTimeInterval YTMUHostGracePeriod = 2.0;
     MPRemoteCommandCenter *center = [MPRemoteCommandCenter sharedCommandCenter];
     BOOL hostPlaying = [self.hostNowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] doubleValue] > 0;
 
-    NSArray<YTMURemoteHandler> *handlers = [self hostHandlersForCommand:center.pauseCommand];
+    MPRemoteCommand *command = center.pauseCommand;
+    unsigned int mediaRemoteType = YTMUMediaRemoteCommandPause;
+    NSArray<YTMURemoteHandler> *handlers = [self hostHandlersForCommand:command];
 
     // Toggle is only safe when we know it's playing, otherwise it would start it
     if (handlers.count == 0 && hostPlaying) {
-        handlers = [self hostHandlersForCommand:center.togglePlayPauseCommand];
+        command = center.togglePlayPauseCommand;
+        mediaRemoteType = YTMUMediaRemoteCommandTogglePlayPause;
+        handlers = [self hostHandlersForCommand:command];
     }
 
     if (handlers.count == 0) return;
 
-    MPRemoteCommandEvent *event = [[NSClassFromString(@"MPRemoteCommandEvent") alloc] init];
+    MPRemoteCommandEvent *event = [self eventForCommand:command mediaRemoteType:mediaRemoteType];
+    if (!event) return;
+
     for (YTMURemoteHandler handler in handlers) {
-        handler(event);
+        @try {
+            handler(event);
+        } @catch (NSException *exception) {
+            NSLog(@"[YTMusicUltimate] Pausing YouTube Music failed: %@", exception);
+        }
+    }
+}
+
+// -[MPRemoteCommandEvent init] throws, so build the event the way MediaPlayer does internally
+- (MPRemoteCommandEvent *)eventForCommand:(MPRemoteCommand *)command mediaRemoteType:(unsigned int)mediaRemoteType {
+    SEL initializer = @selector(initWithCommand:mediaRemoteType:options:);
+    if (![MPRemoteCommandEvent instancesRespondToSelector:initializer]) return nil;
+
+    @try {
+        return [[MPRemoteCommandEvent alloc] initWithCommand:command mediaRemoteType:mediaRemoteType options:@{}];
+    } @catch (NSException *exception) {
+        NSLog(@"[YTMusicUltimate] Couldn't create a pause event: %@", exception);
+        return nil;
     }
 }
 
