@@ -653,7 +653,13 @@ static UIView *YTMUFindView(UIView *root, BOOL (^matches)(UIView *view)) {
 
     if (!self.pivotBarView) bottomEdge = MIN(bottomEdge, CGRectGetMaxY(bounds) - self.view.safeAreaInsets.bottom - 56);
 
+    // Anything else drawn over the bottom of this tab, mostly YouTube Music's own mini player
+    CGFloat coveredEdge = [self coveredEdgeAbove:bottomEdge inWindow:window];
+    BOOL bottomMeasured = isfinite(coveredEdge);
+    if (bottomMeasured) bottomEdge = MIN(bottomEdge, coveredEdge);
+
     CGFloat bottom = MAX(0, CGRectGetMaxY(bounds) - bottomEdge);
+    if (!bottomMeasured && self.bottomObstruction >= 0) bottom = self.bottomObstruction;
     if (!isfinite(top) || !isfinite(bottom)) return;
     if (fabs(top - self.topObstruction) < 0.5 && fabs(bottom - self.bottomObstruction) < 0.5) return;
 
@@ -662,6 +668,54 @@ static UIView *YTMUFindView(UIView *root, BOOL (^matches)(UIView *view)) {
     self.searchBarTopConstraint.constant = top + 4;
     self.miniPlayerBottomConstraint.constant = -(bottom + 8);
     [self applyInsets];
+}
+
+// YouTube Music's mini player lives above this whole tab and its class changes between versions, so
+// rather than look for it by name, ask the window what is actually on top just above the tab bar.
+// Returns the y (in our coordinates) where the covering ends, or NAN if it can't tell right now.
+- (CGFloat)coveredEdgeAbove:(CGFloat)bottomEdge inWindow:(UIWindow *)window {
+    if (!window || self.presentedViewController) return NAN;
+
+    CGRect bounds = self.view.bounds;
+    CGFloat limit = MAX(CGRectGetMidY(bounds), bottomEdge - 240);
+    CGFloat x = CGRectGetMidX(bounds);
+    CGFloat coveredTop = NAN;
+
+    // The mini player might also live in its own overlay window
+    NSMutableArray<UIWindow *> *overlays = [NSMutableArray array];
+    for (UIWindow *other in window.windowScene.windows) {
+        if (other != window && !other.hidden && other.alpha > 0.01 && other.windowLevel >= window.windowLevel) [overlays addObject:other];
+    }
+
+    @try {
+        for (CGFloat y = bottomEdge - 2; y > limit; y -= 4) {
+            CGPoint point = [self.view convertPoint:CGPointMake(x, y) toView:window];
+
+            BOOL covered = NO;
+            for (UIWindow *other in overlays) {
+                UIView *otherHit = [other hitTest:[other convertPoint:point fromWindow:window] withEvent:nil];
+                if (otherHit && otherHit != other) {
+                    covered = YES;
+                    break;
+                }
+            }
+
+            if (!covered) {
+                UIView *hit = [window hitTest:point withEvent:nil];
+                covered = hit && hit != window && hit != self.view && ![hit isDescendantOfView:self.view];
+            }
+
+            // Reached our own content (or nothing at all): whatever was below this is the covering view
+            if (!covered) return isfinite(coveredTop) ? coveredTop : bottomEdge;
+
+            coveredTop = y - 4;
+        }
+    } @catch (NSException *exception) {
+        return NAN;
+    }
+
+    // Covered all the way up: a sheet or YouTube Music's full player is open, so measure again later
+    return NAN;
 }
 
 - (void)applyInsets {
