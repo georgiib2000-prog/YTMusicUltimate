@@ -90,7 +90,7 @@ static UIImage *YTMUSquareImage(UIImage *image, CGFloat side, CGFloat scale) {
 }
 
 - (NSURL *)artworkURL {
-    return [[self.fileURL URLByDeletingLastPathComponent] URLByAppendingPathComponent:[self.fileName stringByAppendingPathExtension:@"png"]];
+    return [[self.fileURL URLByDeletingLastPathComponent] URLByAppendingPathComponent:[NSString stringWithFormat:@"%@.png", self.fileName]];
 }
 
 - (UIImage *)artworkImage {
@@ -118,7 +118,8 @@ static UIImage *YTMUSquareImage(UIImage *image, CGFloat side, CGFloat scale) {
 
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         UIImage *image = [UIImage imageWithContentsOfFile:artworkPath];
-        UIImage *thumbnail = image ? YTMUSquareImage(image, size, scale) : nil;
+        BOOL usable = image && image.size.width > 0 && image.size.height > 0;
+        UIImage *thumbnail = usable ? YTMUSquareImage(image, size, scale) : nil;
         if (thumbnail) [YTMUThumbnailCache() setObject:thumbnail forKey:key];
 
         dispatch_async(dispatch_get_main_queue(), ^{

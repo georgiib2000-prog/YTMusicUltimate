@@ -137,3 +137,7 @@
 "ADDED_TO_QUEUE" = "Added to queue";
 "SHARE" = "Share";
 "UP_NEXT" = "Up next";
+"REORDER" = "Reorder songs";
+"REORDER_HINT" = "Drag the handles to reorder";
+"SORT_CUSTOM" = "Custom order";
+"NAME_TAKEN" = "A song with that name already exists";

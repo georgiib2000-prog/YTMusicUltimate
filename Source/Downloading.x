@@ -27,6 +27,20 @@ static id YTMUDownloadSafeValueForKey(id object, NSString *key) {
     }
 }
 
+// Objects already looked at in the current search. Without this, the parent/child/view walk keeps
+// revisiting the same controllers and can stall the main thread long enough for iOS to kill the app.
+static NSHashTable *YTMUDownloadVisitedPlayers;
+static NSHashTable *YTMUDownloadVisitedResponses;
+
+static BOOL YTMUDownloadMarkVisited(NSHashTable * __strong *visited, id candidate, NSUInteger depth) {
+    if (depth == 0 || !*visited) {
+        *visited = [NSHashTable hashTableWithOptions:NSPointerFunctionsStrongMemory | NSPointerFunctionsObjectPointerPersonality];
+    }
+    if ([*visited containsObject:candidate]) return NO;
+    [*visited addObject:candidate];
+    return YES;
+}
+
 static YTPlayerViewController *YTMUDownloadPlayerFromObject(id candidate, NSUInteger depth);
 
 static YTPlayerViewController *YTMUDownloadPlayerFromKnownKeys(id candidate, NSUInteger depth) {
@@ -51,6 +65,7 @@ static YTPlayerViewController *YTMUDownloadPlayerFromKnownKeys(id candidate, NSU
 
 static YTPlayerViewController *YTMUDownloadPlayerFromObject(id candidate, NSUInteger depth) {
     if (!candidate || depth > 10) return nil;
+    if (!YTMUDownloadMarkVisited(&YTMUDownloadVisitedPlayers, candidate, depth)) return nil;
 
     Class playerClass = NSClassFromString(@"YTPlayerViewController");
     if (playerClass && [candidate isKindOfClass:playerClass]) return candidate;
@@ -101,6 +116,7 @@ static YTPlayerViewController *YTMUDownloadPlayerInSubviews(UIView *view, NSUInt
 
 static id YTMUDownloadPlayerResponseFromObject(id candidate, NSUInteger depth) {
     if (!candidate || depth > 10) return nil;
+    if (!YTMUDownloadMarkVisited(&YTMUDownloadVisitedResponses, candidate, depth)) return nil;
 
     id response = YTMUDownloadSafeValueForKey(candidate, @"playerResponse") ?: YTMUDownloadSafeValueForKey(candidate, @"_playerResponse");
     if (response) return response;

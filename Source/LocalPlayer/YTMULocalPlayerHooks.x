@@ -45,7 +45,7 @@ static YTMURemoteHandler YTMUGuardedHandler(YTMURemoteHandler hostHandler) {
     __weak id weakTarget = target;
     YTMURemoteHandler hostHandler = ^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent *event) {
         id strongTarget = weakTarget;
-        if (!strongTarget) return MPRemoteCommandHandlerStatusCommandFailed;
+        if (!strongTarget || ![strongTarget respondsToSelector:action]) return MPRemoteCommandHandlerStatusCommandFailed;
 
         NSMethodSignature *signature = [strongTarget methodSignatureForSelector:action];
         if (signature.methodReturnLength == 0) {

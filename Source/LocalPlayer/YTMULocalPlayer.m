@@ -51,18 +51,10 @@ static const unsigned int YTMUMediaRemoteCommandTogglePlayPause = 2;
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _player = [[AVPlayer alloc] init];
         _mutableQueue = [NSMutableArray array];
         _originalQueue = [NSMutableArray array];
         _hostHandlers = [NSMutableDictionary dictionary];
         _hostEnabledStates = [NSMutableDictionary dictionary];
-
-        [_player addObserver:self forKeyPath:@"timeControlStatus" options:NSKeyValueObservingOptionNew context:YTMUPlayerKVOContext];
-
-        __weak typeof(self) weakSelf = self;
-        _timeObserver = [_player addPeriodicTimeObserverForInterval:CMTimeMakeWithSeconds(0.5, 600) queue:dispatch_get_main_queue() usingBlock:^(CMTime time) {
-            [[NSNotificationCenter defaultCenter] postNotificationName:YTMULocalPlayerTimeDidChangeNotification object:weakSelf];
-        }];
 
         NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
         [center addObserver:self selector:@selector(itemDidPlayToEnd:) name:AVPlayerItemDidPlayToEndTimeNotification object:nil];
@@ -71,6 +63,21 @@ static const unsigned int YTMUMediaRemoteCommandTogglePlayPause = 2;
     }
 
     return self;
+}
+
+// Created on first playback rather than in init, because the system hooks touch sharedPlayer during app launch
+- (AVPlayer *)player {
+    if (!_player) {
+        _player = [[AVPlayer alloc] init];
+        [_player addObserver:self forKeyPath:@"timeControlStatus" options:NSKeyValueObservingOptionNew context:YTMUPlayerKVOContext];
+
+        __weak typeof(self) weakSelf = self;
+        _timeObserver = [_player addPeriodicTimeObserverForInterval:CMTimeMakeWithSeconds(0.5, 600) queue:dispatch_get_main_queue() usingBlock:^(CMTime time) {
+            [[NSNotificationCenter defaultCenter] postNotificationName:YTMULocalPlayerTimeDidChangeNotification object:weakSelf];
+        }];
+    }
+
+    return _player;
 }
 
 #pragma mark - State
@@ -85,17 +92,24 @@ static const unsigned int YTMUMediaRemoteCommandTogglePlayPause = 2;
 }
 
 - (BOOL)isPlaying {
-    return self.active && self.player.currentItem && self.player.timeControlStatus != AVPlayerTimeControlStatusPaused;
+    AVPlayer *player = _player;
+    return self.active && player.currentItem && player.timeControlStatus != AVPlayerTimeControlStatusPaused;
 }
 
 - (NSTimeInterval)currentTime {
-    NSTimeInterval seconds = CMTimeGetSeconds(self.player.currentTime);
+    AVPlayer *player = _player;
+    if (!player.currentItem) return 0;
+
+    NSTimeInterval seconds = CMTimeGetSeconds(player.currentTime);
     return isfinite(seconds) && seconds > 0 ? seconds : 0;
 }
 
 - (NSTimeInterval)duration {
-    NSTimeInterval seconds = CMTimeGetSeconds(self.player.currentItem.duration);
-    if (isfinite(seconds) && seconds > 0) return seconds;
+    AVPlayerItem *item = _player.currentItem;
+    if (item) {
+        NSTimeInterval seconds = CMTimeGetSeconds(item.duration);
+        if (isfinite(seconds) && seconds > 0) return seconds;
+    }
     return self.currentTrack.duration;
 }
 
@@ -203,15 +217,13 @@ static const unsigned int YTMUMediaRemoteCommandTogglePlayPause = 2;
     [self loadCurrentTrackAndPlay:YES];
 }
 
-- (void)trackWasRemoved:(NSURL *)fileURL {
+// Drops every copy of the file from the queue, keeping currentIndex on the same song or on the one that moved into its place
+- (BOOL)removeFromQueues:(NSURL *)fileURL {
     YTMULocalTrack *current = self.currentTrack;
-    if (!current) return;
-
-    BOOL wasPlaying = self.isPlaying;
     BOOL currentRemoved = [current isSameFileAsURL:fileURL];
 
     NSInteger removedBeforeCurrent = 0;
-    for (NSInteger i = 0; i < self.currentIndex; i++) {
+    for (NSInteger i = 0; i < self.currentIndex && i < (NSInteger)self.mutableQueue.count; i++) {
         if ([self.mutableQueue[i] isSameFileAsURL:fileURL]) removedBeforeCurrent++;
     }
 
@@ -221,16 +233,30 @@ static const unsigned int YTMUMediaRemoteCommandTogglePlayPause = 2;
     [self.mutableQueue filterUsingPredicate:keep];
     [self.originalQueue filterUsingPredicate:keep];
 
+    if (currentRemoved) {
+        self.currentIndex = MAX(0, MIN(self.currentIndex - removedBeforeCurrent, (NSInteger)self.mutableQueue.count - 1));
+    } else if (current) {
+        NSUInteger index = [self.mutableQueue indexOfObjectIdenticalTo:current];
+        self.currentIndex = index == NSNotFound ? 0 : index;
+    }
+
+    return currentRemoved;
+}
+
+- (void)trackWasRemoved:(NSURL *)fileURL {
+    if (!self.currentTrack) return;
+
+    BOOL wasPlaying = self.isPlaying;
+    BOOL currentRemoved = [self removeFromQueues:fileURL];
+
     if (self.mutableQueue.count == 0) {
         [self stop];
         return;
     }
 
     if (currentRemoved) {
-        self.currentIndex = MIN(self.currentIndex - removedBeforeCurrent, (NSInteger)self.mutableQueue.count - 1);
         [self loadCurrentTrackAndPlay:wasPlaying];
     } else {
-        self.currentIndex = [self.mutableQueue indexOfObjectIdenticalTo:current];
         [self updateNowPlayingInfo];
         [self postStateChange];
     }
@@ -262,7 +288,7 @@ static const unsigned int YTMUMediaRemoteCommandTogglePlayPause = 2;
 
 - (MPMediaItemArtwork *)artworkForTrack:(YTMULocalTrack *)track {
     UIImage *image = [track artworkImage];
-    if (!image) return nil;
+    if (!image || image.size.width <= 0 || image.size.height <= 0) return nil;
 
     return [[MPMediaItemArtwork alloc] initWithBoundsSize:image.size requestHandler:^UIImage *(CGSize size) {
         return image;
@@ -270,6 +296,12 @@ static const unsigned int YTMUMediaRemoteCommandTogglePlayPause = 2;
 }
 
 - (void)loadCurrentTrackAndPlay:(BOOL)shouldPlay {
+    // Skip songs whose files were deleted outside the app (each pass removes one, so this ends)
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    while (self.currentTrack && ![fileManager fileExistsAtPath:self.currentTrack.fileURL.path]) {
+        [self removeFromQueues:self.currentTrack.fileURL];
+    }
+
     YTMULocalTrack *track = self.currentTrack;
     if (!track) {
         [self stop];
@@ -311,7 +343,7 @@ static const unsigned int YTMUMediaRemoteCommandTogglePlayPause = 2;
 
 - (void)pause {
     self.wantsToPlay = NO;
-    [self.player pause];
+    [_player pause];
 
     [self updateNowPlayingInfo];
     [self postStateChange];
@@ -357,7 +389,7 @@ static const unsigned int YTMUMediaRemoteCommandTogglePlayPause = 2;
 }
 
 - (void)seekToTime:(NSTimeInterval)time {
-    if (!self.player.currentItem) return;
+    if (!_player.currentItem || !isfinite(time)) return;
 
     __weak typeof(self) weakSelf = self;
     [self.player seekToTime:CMTimeMakeWithSeconds(MAX(0, time), 600) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero completionHandler:^(BOOL finished) {
@@ -370,8 +402,8 @@ static const unsigned int YTMUMediaRemoteCommandTogglePlayPause = 2;
 
 - (void)stop {
     self.wantsToPlay = NO;
-    [self.player pause];
-    [self.player replaceCurrentItemWithPlayerItem:nil];
+    [_player pause];
+    [_player replaceCurrentItemWithPlayerItem:nil];
     [self.mutableQueue removeAllObjects];
     [self.originalQueue removeAllObjects];
     self.currentIndex = 0;
@@ -383,7 +415,7 @@ static const unsigned int YTMUMediaRemoteCommandTogglePlayPause = 2;
 
 - (void)itemDidPlayToEnd:(NSNotification *)notification {
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (notification.object != self.player.currentItem) return;
+        if (!self->_player.currentItem || notification.object != self->_player.currentItem) return;
 
         if (self.repeatMode == YTMURepeatModeOne) {
             [self seekToTime:0];
@@ -396,7 +428,7 @@ static const unsigned int YTMUMediaRemoteCommandTogglePlayPause = 2;
             [self loadCurrentTrackAndPlay:YES];
         } else {
             self.wantsToPlay = NO;
-            [self.player pause];
+            [self->_player pause];
             [self seekToTime:0];
             [self postStateChange];
         }
@@ -575,7 +607,7 @@ static const unsigned int YTMUMediaRemoteCommandTogglePlayPause = 2;
 
     self.active = NO;
     self.wantsToPlay = NO;
-    [self.player pause];
+    [_player pause];
     [self restoreHostCommandStates];
 
     self.updatingSystemState = YES;
