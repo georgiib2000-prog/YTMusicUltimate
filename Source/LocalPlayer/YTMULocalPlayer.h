@@ -50,6 +50,7 @@ extern NSString *const YTMULocalPlayerTimeDidChangeNotification;
 
 - (void)trackWasRemoved:(NSURL *)fileURL;
 - (void)trackWasRenamedFrom:(NSURL *)oldURL to:(NSURL *)newURL;
+- (void)trackTrimDidChange:(NSURL *)fileURL;
 
 // Bridge for YTMULocalPlayerHooks.x
 - (void)registerHostHandler:(YTMURemoteHandler)handler forCommand:(MPRemoteCommand *)command;

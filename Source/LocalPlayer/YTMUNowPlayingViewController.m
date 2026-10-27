@@ -1,5 +1,6 @@
 #import "YTMUNowPlayingViewController.h"
 #import "YTMULocalPlayer.h"
+#import "YTMUTrimViewController.h"
 #import "../Headers/Localization.h"
 #import <AVKit/AVKit.h>
 
@@ -158,6 +159,20 @@ static UIImage *YTMUSymbol(NSString *name, CGFloat size) {
     [queueButton setImage:YTMUSymbol(@"list.bullet", 18) forState:UIControlStateNormal];
     [queueButton addTarget:self action:@selector(queueTapped) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:queueButton];
+
+    UIButton *trimButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    trimButton.translatesAutoresizingMaskIntoConstraints = NO;
+    trimButton.tintColor = [UIColor whiteColor];
+    [trimButton setImage:YTMUSymbol(@"scissors", 18) forState:UIControlStateNormal];
+    [trimButton addTarget:self action:@selector(trimTapped) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:trimButton];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [trimButton.centerYAnchor constraintEqualToAnchor:closeButton.centerYAnchor],
+        [trimButton.trailingAnchor constraintEqualToAnchor:routePicker.leadingAnchor constant:-4],
+        [trimButton.widthAnchor constraintEqualToConstant:44],
+        [trimButton.heightAnchor constraintEqualToConstant:44],
+    ]];
 
     _artworkView = [[UIImageView alloc] init];
     _artworkView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -367,6 +382,13 @@ static UIImage *YTMUSymbol(NSString *name, CGFloat size) {
 
 - (void)closeTapped {
     [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)trimTapped {
+    YTMULocalTrack *track = [YTMULocalPlayer sharedPlayer].currentTrack;
+    if (!track || self.presentedViewController || ![[NSFileManager defaultManager] fileExistsAtPath:track.fileURL.path]) return;
+
+    [self presentViewController:[[YTMUTrimViewController alloc] initWithTrack:track] animated:YES completion:nil];
 }
 
 - (void)queueTapped {

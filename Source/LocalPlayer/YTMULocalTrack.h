@@ -20,4 +20,17 @@
 - (void)loadDurationWithCompletion:(void (^)(NSTimeInterval duration))completion;
 - (BOOL)matchesSearchText:(NSString *)text;
 - (BOOL)isSameFileAsURL:(NSURL *)url;
+
+// The part of the file that actually plays. trimEnd is 0 when it plays to the end of the file.
+@property (nonatomic, readonly) NSTimeInterval trimStart;
+@property (nonatomic, readonly) NSTimeInterval trimEnd;
+@property (nonatomic, readonly, getter=isTrimmed) BOOL trimmed;
+// Length of the part that plays, or 0 if the file's duration isn't known yet
+@property (nonatomic, readonly) NSTimeInterval playbackDuration;
+
+- (void)setTrimStart:(NSTimeInterval)start end:(NSTimeInterval)end;
+- (void)clearTrim;
++ (void)moveTrimFromURL:(NSURL *)oldURL toURL:(NSURL *)newURL;
++ (void)removeTrimForURL:(NSURL *)fileURL;
++ (void)removeAllTrims;
 @end

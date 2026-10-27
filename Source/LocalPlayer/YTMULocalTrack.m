@@ -147,6 +147,93 @@ static UIImage *YTMUSquareImage(UIImage *image, CGFloat side, CGFloat scale) {
     }];
 }
 
+#pragma mark - Start & end
+
+// { "Author - Title.m4a": { "start": 12.5, "end": 220 } }, keyed by file name so it survives app updates
+static NSString *const YTMUTrimsKey = @"YTMULocalTrackTrims";
+
++ (NSDictionary *)trimEntryForURL:(NSURL *)fileURL {
+    NSString *name = fileURL.lastPathComponent;
+    if (!name) return nil;
+
+    id entry = [[NSUserDefaults standardUserDefaults] dictionaryForKey:YTMUTrimsKey][name];
+    return [entry isKindOfClass:[NSDictionary class]] ? entry : nil;
+}
+
++ (void)setTrimEntry:(NSDictionary *)entry forURL:(NSURL *)fileURL {
+    NSString *name = fileURL.lastPathComponent;
+    if (!name) return;
+
+    NSMutableDictionary *trims = [[[NSUserDefaults standardUserDefaults] dictionaryForKey:YTMUTrimsKey] mutableCopy] ?: [NSMutableDictionary dictionary];
+    if (entry) {
+        trims[name] = entry;
+    } else {
+        [trims removeObjectForKey:name];
+    }
+    [[NSUserDefaults standardUserDefaults] setObject:trims forKey:YTMUTrimsKey];
+}
+
+static NSTimeInterval YTMUSafeSeconds(id value) {
+    if (![value respondsToSelector:@selector(doubleValue)]) return 0;
+    double seconds = [value doubleValue];
+    return isfinite(seconds) && seconds > 0 ? seconds : 0;
+}
+
+- (NSTimeInterval)trimStart {
+    return YTMUSafeSeconds([YTMULocalTrack trimEntryForURL:self.fileURL][@"start"]);
+}
+
+- (NSTimeInterval)trimEnd {
+    NSTimeInterval end = YTMUSafeSeconds([YTMULocalTrack trimEntryForURL:self.fileURL][@"end"]);
+    return end > self.trimStart ? end : 0;
+}
+
+- (BOOL)isTrimmed {
+    return self.trimStart > 0 || self.trimEnd > 0;
+}
+
+- (NSTimeInterval)playbackDuration {
+    if (self.duration <= 0) return 0;
+
+    NSTimeInterval start = MIN(self.trimStart, self.duration);
+    NSTimeInterval end = self.trimEnd > 0 ? MIN(self.trimEnd, self.duration) : self.duration;
+    return MAX(0, end - start);
+}
+
+- (void)setTrimStart:(NSTimeInterval)start end:(NSTimeInterval)end {
+    start = isfinite(start) && start > 0 ? start : 0;
+    end = isfinite(end) && end > start ? end : 0;
+
+    if (start == 0 && end == 0) {
+        [self clearTrim];
+        return;
+    }
+
+    [YTMULocalTrack setTrimEntry:@{@"start": @(start), @"end": @(end)} forURL:self.fileURL];
+}
+
+- (void)clearTrim {
+    [YTMULocalTrack setTrimEntry:nil forURL:self.fileURL];
+}
+
++ (void)moveTrimFromURL:(NSURL *)oldURL toURL:(NSURL *)newURL {
+    NSDictionary *entry = [self trimEntryForURL:oldURL];
+    if (!entry) return;
+
+    [self setTrimEntry:nil forURL:oldURL];
+    [self setTrimEntry:entry forURL:newURL];
+}
+
++ (void)removeTrimForURL:(NSURL *)fileURL {
+    [self setTrimEntry:nil forURL:fileURL];
+}
+
++ (void)removeAllTrims {
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:YTMUTrimsKey];
+}
+
+#pragma mark - Search
+
 // Every word must appear somewhere in "Author - Title"
 - (BOOL)matchesSearchText:(NSString *)text {
     NSStringCompareOptions options = NSCaseInsensitiveSearch | NSDiacriticInsensitiveSearch;

@@ -2,6 +2,7 @@
 #import "../LocalPlayer/YTMULocalPlayer.h"
 #import "../LocalPlayer/YTMUMiniPlayerView.h"
 #import "../LocalPlayer/YTMUNowPlayingViewController.h"
+#import "../LocalPlayer/YTMUTrimViewController.h"
 #import "../Utils/MBProgressHUD/MBProgressHUD.h"
 
 // Everything in this tab uses UIKit's own alerts, sheets and HUDs rather than YouTube Music's private
@@ -146,7 +147,8 @@ static UIView *YTMUFindView(UIView *root, BOOL (^matches)(UIView *view)) {
 - (NSString *)subtitleForTrack:(YTMULocalTrack *)track {
     NSMutableArray<NSString *> *parts = [NSMutableArray array];
     if (track.artist.length > 0) [parts addObject:track.artist];
-    if (track.duration > 0) [parts addObject:YTMUDurationString(track.duration)];
+    if (track.duration > 0) [parts addObject:YTMUDurationString(track.playbackDuration)];
+    if (track.isTrimmed) [parts addObject:LOC_DEFAULT(@"TRIMMED", @"Trimmed") ?: @"Trimmed"];
     return [parts componentsJoinedByString:@" • "];
 }
 
@@ -905,6 +907,9 @@ static UIView *YTMUFindView(UIView *root, BOOL (^matches)(UIView *view)) {
         UIAction *share = [UIAction actionWithTitle:YTMU_STR(@"SHARE", @"Share") image:[UIImage systemImageNamed:@"square.and.arrow.up"] identifier:nil handler:^(UIAction *action) {
             [self shareFiles:@[track.fileURL] sourceView:sourceView];
         }];
+        UIAction *trim = [UIAction actionWithTitle:YTMU_STR(@"TRIM", @"Set start & end") image:[UIImage systemImageNamed:@"scissors"] identifier:nil handler:^(UIAction *action) {
+            [self showTrimForTrack:track];
+        }];
         UIAction *rename = [UIAction actionWithTitle:YTMU_STR(@"RENAME", @"Rename") image:[UIImage systemImageNamed:@"pencil"] identifier:nil handler:^(UIAction *action) {
             [self promptRenameTrack:track];
         }];
@@ -913,11 +918,16 @@ static UIView *YTMUFindView(UIView *root, BOOL (^matches)(UIView *view)) {
         }];
         remove.attributes = UIMenuElementAttributesDestructive;
 
-        return [UIMenu menuWithTitle:track.title ?: @"" children:@[playNext, addToQueue, share, rename, remove]];
+        return [UIMenu menuWithTitle:track.title ?: @"" children:@[playNext, addToQueue, trim, share, rename, remove]];
     }];
 }
 
 #pragma mark - Track actions
+
+- (void)showTrimForTrack:(YTMULocalTrack *)track {
+    if (!track || ![[NSFileManager defaultManager] fileExistsAtPath:track.fileURL.path]) return;
+    [self presentSafely:[[YTMUTrimViewController alloc] initWithTrack:track] sourceView:nil];
+}
 
 - (void)playNext:(YTMULocalTrack *)track {
     [[YTMULocalPlayer sharedPlayer] playNext:track];
@@ -977,6 +987,7 @@ static UIView *YTMUFindView(UIView *root, BOOL (^matches)(UIView *view)) {
     }
 
     [self renameCustomOrderEntryFrom:audioURL.lastPathComponent to:newAudioURL.lastPathComponent];
+    [YTMULocalTrack moveTrimFromURL:audioURL toURL:newAudioURL];
     [[YTMULocalPlayer sharedPlayer] trackWasRenamedFrom:audioURL to:newAudioURL];
     [self reloadData];
     [self showToast:YTMU_STR(@"DONE", @"Done")];
@@ -1000,6 +1011,7 @@ static UIView *YTMUFindView(UIView *root, BOOL (^matches)(UIView *view)) {
     [fileManager removeItemAtURL:[track artworkURL] error:nil];
 
     if (audioRemoved || ![fileManager fileExistsAtPath:track.fileURL.path]) {
+        [YTMULocalTrack removeTrimForURL:track.fileURL];
         [[YTMULocalPlayer sharedPlayer] trackWasRemoved:track.fileURL];
     } else {
         [self showToast:YTMU_STR(@"OOPS", @"Oops\nsomething went wrong")];
@@ -1083,6 +1095,7 @@ static UIView *YTMUFindView(UIView *root, BOOL (^matches)(UIView *view)) {
         [[YTMULocalPlayer sharedPlayer] stop];
         [[NSFileManager defaultManager] removeItemAtURL:[YTMULocalTrack libraryURL] error:nil];
         [[NSUserDefaults standardUserDefaults] removeObjectForKey:YTMULibraryCustomOrderKey];
+        [YTMULocalTrack removeAllTrims];
         [self reloadData];
     }]];
 

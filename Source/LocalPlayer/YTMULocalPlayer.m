@@ -110,7 +110,7 @@ static const unsigned int YTMUMediaRemoteCommandTogglePlayPause = 2;
         NSTimeInterval seconds = CMTimeGetSeconds(item.duration);
         if (isfinite(seconds) && seconds > 0) return seconds;
     }
-    return self.currentTrack.duration;
+    return self.currentTrack.playbackDuration;
 }
 
 - (void)postStateChange {
@@ -295,6 +295,37 @@ static const unsigned int YTMUMediaRemoteCommandTogglePlayPause = 2;
     }];
 }
 
+// Only the chosen part of the file, as its own asset: time 0 is the start, and it ends at the end,
+// so progress, seeking, the lock screen and moving on to the next song all just work.
+// Returns nil (play the whole file) if there's no start/end or it doesn't fit the file.
+- (AVAsset *)trimmedAsset:(AVURLAsset *)asset forTrack:(YTMULocalTrack *)track {
+    if (!track.isTrimmed || track.duration <= 0) return nil;
+
+    NSTimeInterval start = MIN(track.trimStart, track.duration);
+    NSTimeInterval end = track.trimEnd > 0 ? MIN(track.trimEnd, track.duration) : track.duration;
+    if (end - start < 0.5) return nil;
+
+    @try {
+        AVMutableComposition *composition = [AVMutableComposition composition];
+        CMTimeRange range = CMTimeRangeFromTimeToTime(CMTimeMakeWithSeconds(start, 600), CMTimeMakeWithSeconds(end, 600));
+        if (![composition insertTimeRange:range ofAsset:asset atTime:kCMTimeZero error:nil]) return nil;
+        return composition;
+    } @catch (NSException *exception) {
+        NSLog(@"[YTMusicUltimate] Couldn't trim %@: %@", track.fileName, exception);
+        return nil;
+    }
+}
+
+- (void)trackTrimDidChange:(NSURL *)fileURL {
+    if (![self.currentTrack isSameFileAsURL:fileURL]) {
+        [self postStateChange];
+        return;
+    }
+
+    // Restart the current song with its new start and end
+    [self loadCurrentTrackAndPlay:self.isPlaying];
+}
+
 - (void)loadCurrentTrackAndPlay:(BOOL)shouldPlay {
     // Skip songs whose files were deleted outside the app (each pass removes one, so this ends)
     NSFileManager *fileManager = [NSFileManager defaultManager];
@@ -316,7 +347,8 @@ static const unsigned int YTMUMediaRemoteCommandTogglePlayPause = 2;
         if (isfinite(seconds) && seconds > 0) track.duration = seconds;
     }
 
-    [self.player replaceCurrentItemWithPlayerItem:[AVPlayerItem playerItemWithAsset:asset]];
+    AVAsset *playableAsset = [self trimmedAsset:asset forTrack:track] ?: asset;
+    [self.player replaceCurrentItemWithPlayerItem:[AVPlayerItem playerItemWithAsset:playableAsset]];
     self.currentArtwork = [self artworkForTrack:track];
 
     self.wantsToPlay = shouldPlay;

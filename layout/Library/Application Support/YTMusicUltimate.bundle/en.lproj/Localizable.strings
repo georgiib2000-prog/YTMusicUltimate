@@ -141,3 +141,17 @@
 "REORDER_HINT" = "Drag the handles to reorder";
 "SORT_CUSTOM" = "Custom order";
 "NAME_TAKEN" = "A song with that name already exists";
+"TRIM" = "Set start & end";
+"TRIM_TITLE" = "Start & end";
+"TRIM_START" = "Start";
+"TRIM_END" = "End";
+"TRIM_END_PLACEHOLDER" = "End of song";
+"TRIM_HINT" = "Play or scrub to the moment you want, then tap Use current time. You can also type times like 1:23 or 1:02:03. Leave End empty to play to the end.";
+"TRIM_PREVIEW" = "Preview selection";
+"TRIM_RESET" = "Reset to the whole song";
+"TRIM_BAD_TIME" = "Enter times like 1:23 or 1:02:03.";
+"TRIM_BAD_RANGE" = "The end has to be at least 1 second after the start, and the start has to be inside the song.";
+"USE_PLAYHEAD" = "Use current time";
+"TRIMMED" = "Trimmed";
+"SAVE" = "Save";
+"OK" = "OK";
